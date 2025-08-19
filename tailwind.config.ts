@@ -52,6 +52,16 @@ export default {
 					DEFAULT: 'hsl(var(--card))',
 					foreground: 'hsl(var(--card-foreground))'
 				},
+				chat: {
+					DEFAULT: 'hsl(var(--chat-background))',
+					foreground: 'hsl(var(--chat-foreground))',
+					'user-bg': 'hsl(var(--chat-user-bg))',
+					'user-fg': 'hsl(var(--chat-user-fg))',
+					'ai-bg': 'hsl(var(--chat-ai-bg))',
+					'ai-fg': 'hsl(var(--chat-ai-fg))',
+					'input-bg': 'hsl(var(--chat-input-bg))',
+					border: 'hsl(var(--chat-border))'
+				},
 				sidebar: {
 					DEFAULT: 'hsl(var(--sidebar-background))',
 					foreground: 'hsl(var(--sidebar-foreground))',
