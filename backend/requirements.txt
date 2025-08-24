@@ -29,3 +29,5 @@ statsmodels==0.14.1
 celery==5.3.4
 kombu==5.3.4
 redis==5.0.1
+openpyxl==3.1.2
+xlsxwriter==3.1.9
