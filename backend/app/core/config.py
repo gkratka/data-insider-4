@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     
     # Redis
     redis_url: str = "redis://localhost:6379"
+    REDIS_URL: str = "redis://localhost:6379"
     
     # Security
     secret_key: str = "your-secret-key-here"
