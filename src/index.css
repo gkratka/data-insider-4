@@ -37,14 +37,14 @@ All colors MUST be HSL.
     --ring: 220 13% 18%;
 
     /* Chat specific colors */
-    --chat-background: 220 27% 18%;
+    --chat-background: 210 11% 15%;
     --chat-foreground: 220 9% 92%;
     --chat-user-bg: 217 91% 60%;
     --chat-user-fg: 220 9% 92%;
-    --chat-ai-bg: 220 23% 23%;
+    --chat-ai-bg: 210 11% 20%;
     --chat-ai-fg: 220 9% 92%;
-    --chat-input-bg: 220 23% 23%;
-    --chat-border: 220 20% 25%;
+    --chat-input-bg: 210 11% 20%;
+    --chat-border: 210 11% 25%;
 
     --radius: 0.5rem;
 
