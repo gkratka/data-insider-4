@@ -6,9 +6,15 @@
       "Bash(claude mcp add:*)",
       "Bash(claude mcp:*)",
       "Bash(mkdir:*)",
-      "Bash(git init:*)"
+      "Bash(git init:*)",
+      "Bash(npm install:*)",
+      "Bash(gh pr create:*)",
+      "Bash(grep:*)"
     ],
     "deny": [],
-    "ask": []
+    "ask": [],
+    "additionalDirectories": [
+      "/Users/gkratka/Documents"
+    ]
   }
 }

@@ -7,6 +7,7 @@ from database import engine, Base
 from routers import auth, users
 from config import settings
 from middleware import RateLimitMiddleware, SecurityHeadersMiddleware
+from app.api import api_router
 
 
 @asynccontextmanager
@@ -39,6 +40,7 @@ app.add_middleware(
 # Include routers
 app.include_router(auth.router, prefix="/auth", tags=["authentication"])
 app.include_router(users.router, prefix="/users", tags=["users"])
+app.include_router(api_router, prefix="/api/v1")
 
 
 @app.get("/")
