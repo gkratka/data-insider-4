@@ -7,6 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { useCallback, useState } from "react";
 import { useDropzone } from "react-dropzone";
 import { toast } from "sonner";
+import { fileService } from "@/services/fileService";
+import { sessionService } from "@/services/sessionService";
 
 interface UploadedFile {
   id: string;
@@ -63,32 +65,42 @@ const UploadSection = () => {
     setUploadedFiles(prev => [...prev, uploadedFile]);
     
     try {
-      // Simulate upload progress
-      const formData = new FormData();
-      formData.append('file', file);
+      // Listen for upload progress events
+      const handleProgress = (event: CustomEvent) => {
+        if (event.detail.filename === file.name) {
+          setUploadedFiles(prev => 
+            prev.map(f => 
+              f.id === fileId ? { ...f, progress: event.detail.progress } : f
+            )
+          );
+        }
+      };
       
-      // Progress simulation for now - will be replaced with actual upload
-      for (let progress = 0; progress <= 100; progress += 20) {
-        await new Promise(resolve => setTimeout(resolve, 200));
-        setUploadedFiles(prev => 
-          prev.map(f => 
-            f.id === fileId ? { ...f, progress } : f
-          )
-        );
-      }
+      window.addEventListener('fileUploadProgress', handleProgress as EventListener);
       
+      // Use fileService for actual upload
+      const response = await fileService.uploadFile({
+        file,
+        sessionId: sessionService.getCurrentSessionId() || undefined
+      });
+      
+      // Update with server response
       setUploadedFiles(prev => 
         prev.map(f => 
-          f.id === fileId ? { ...f, status: 'completed' } : f
+          f.id === fileId 
+            ? { ...f, id: response.fileId, status: 'completed', progress: 100 } 
+            : f
         )
       );
       
+      window.removeEventListener('fileUploadProgress', handleProgress as EventListener);
       toast.success(`${file.name} uploaded successfully`);
+      
     } catch (error) {
       setUploadedFiles(prev => 
         prev.map(f => 
           f.id === fileId 
-            ? { ...f, status: 'error', error: 'Upload failed' } 
+            ? { ...f, status: 'error', error: error instanceof Error ? error.message : 'Upload failed' } 
             : f
         )
       );
