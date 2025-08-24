@@ -6,6 +6,7 @@ import uvicorn
 from database import engine, Base
 from routers import auth, users
 from config import settings
+from middleware import RateLimitMiddleware, SecurityHeadersMiddleware
 
 
 @asynccontextmanager
@@ -21,6 +22,10 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan
 )
+
+# Security middleware
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(RateLimitMiddleware, calls=100, period=60)
 
 # CORS middleware
 app.add_middleware(
