@@ -17,3 +17,4 @@ class User(Base):
     
     # Relationships
     uploaded_files = relationship("UploadedFile", back_populates="user")
+    data_sessions = relationship("DataSession", back_populates="user")
