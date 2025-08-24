@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api.endpoints import files, sessions, data, query, chat, statistics, advanced_query, jobs, export
+from app.api.endpoints import files, sessions, data, query, chat, statistics, advanced_query, jobs, export, performance
 
 # Main API router
 api_router = APIRouter()
@@ -14,3 +14,4 @@ api_router.include_router(statistics.router, tags=["statistics"])
 api_router.include_router(advanced_query.router, tags=["advanced-query"])
 api_router.include_router(jobs.router, tags=["jobs"])
 api_router.include_router(export.router, tags=["export"])
+api_router.include_router(performance.router, tags=["performance"])
