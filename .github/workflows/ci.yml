@@ -1,0 +1,104 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, phase1-foundation]
+  pull_request:
+    branches: [main]
+
+jobs:
+  frontend-test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: data-insider-4/package-lock.json
+    
+    - name: Install frontend dependencies
+      run: |
+        cd data-insider-4
+        npm ci
+    
+    - name: Run ESLint
+      run: |
+        cd data-insider-4
+        npm run lint
+    
+    - name: TypeScript check
+      run: |
+        cd data-insider-4
+        npx tsc --noEmit
+    
+    - name: Build frontend
+      run: |
+        cd data-insider-4
+        npm run build
+
+  backend-test:
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: datainsider_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install backend dependencies
+      run: |
+        cd backend
+        pip install -r requirements.txt
+    
+    - name: Run backend tests
+      env:
+        DATABASE_URL: postgresql://postgres:password@localhost:5432/datainsider_test
+        REDIS_URL: redis://localhost:6379
+        JWT_SECRET: test-secret-key
+      run: |
+        cd backend
+        python -m pytest tests/ -v
+
+  docker-build:
+    runs-on: ubuntu-latest
+    needs: [frontend-test, backend-test]
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Build and test Docker containers
+      run: |
+        docker-compose build
+        docker-compose up -d postgres redis
+        sleep 10
+        docker-compose down
