@@ -9,7 +9,9 @@
       "Bash(git init:*)",
       "Bash(npm install:*)",
       "Bash(gh pr create:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(npm run test:*)",
+      "Bash(chmod:*)"
     ],
     "deny": [],
     "ask": [],
