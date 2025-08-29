@@ -157,7 +157,8 @@ const ChatInterface = ({ uploadedFiles = [] }: ChatInterfaceProps) => {
 
     } catch (error) {
       toast.error('Failed to send message');
-      console.error('Send message error:', error);
+      // Log errors to monitoring service in production
+      // console.error('Send message error:', error);
     }
   };
 

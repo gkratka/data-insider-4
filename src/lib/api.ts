@@ -41,23 +41,24 @@ apiClient.interceptors.response.use(
           window.location.href = '/login';
           break;
         case 403:
-          // Forbidden
-          console.error('Access denied');
+          // Forbidden - log to monitoring service in production
+          // console.error('Access denied');
           break;
         case 404:
-          // Not found
-          console.error('Resource not found');
+          // Not found - log to monitoring service in production
+          // console.error('Resource not found');
           break;
         case 500:
-          // Server error
-          console.error('Server error');
+          // Server error - log to monitoring service in production
+          // console.error('Server error');
           break;
         default:
-          console.error('API Error:', error.response.data);
+          // Log API errors to monitoring service in production
+          // console.error('API Error:', error.response.data);
       }
     } else if (error.request) {
-      // Network error
-      console.error('Network error:', error.message);
+      // Network error - log to monitoring service in production
+      // console.error('Network error:', error.message);
     }
     
     return Promise.reject(error);
