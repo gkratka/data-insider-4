@@ -7,7 +7,7 @@ import { Suspense, lazy } from "react";
 import ErrorBoundary from "@/components/ErrorBoundary";
 
 // Lazy load pages for better performance
-const Index = lazy(() => import("./pages/Index"));
+const Index = lazy(() => import("./pages/IndexSimple"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 const queryClient = new QueryClient();
