@@ -19,8 +19,8 @@ class FileService {
         formData.append('sessionId', request.sessionId);
       }
 
-      const response = await apiClient.post<ApiResponse<FileUploadResponse>>(
-        '/api/files/upload',
+      const response = await apiClient.post(
+        '/api/v1/files/upload',
         formData,
         {
           headers: {
@@ -40,7 +40,25 @@ class FileService {
         }
       );
 
-      return response.data.data;
+      // Backend returns direct response, not wrapped in ApiResponse
+      // Validate that backend returned a valid file ID
+      if (!response.data.file_id) {
+        throw new Error('Backend did not return a valid file ID');
+      }
+
+      return {
+        fileId: response.data.file_id,  // Fixed: use file_id from backend response
+        filename: response.data.filename,
+        size: response.data.size,
+        contentType: response.data.contentType || 'application/octet-stream',
+        uploadedAt: new Date().toISOString(),
+        sessionId: request.sessionId || '',
+        metadata: {
+          rows: response.data.rows,
+          columns: response.data.columns?.length || 0,
+          columnNames: response.data.columns || []
+        }
+      };
     } catch (error) {
       const apiError = handleApiError(error);
       throw new Error(apiError.message);
