@@ -56,10 +56,15 @@ export interface SendMessageRequest {
   fileIds?: string[];
 }
 
-export interface SendMessageResponse {
-  messageId: string;
-  response: ChatMessage;
+export interface SendMessageResponse extends ChatMessage {
+  messageId?: string;
   streamId?: string;
+}
+
+export interface ChatResponse {
+  response: string;
+  session_id: string;
+  message_count: number;
 }
 
 // Data Query Types

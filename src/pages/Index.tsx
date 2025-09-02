@@ -4,7 +4,7 @@ import UploadSection from "@/components/UploadSection";
 import UploadedFiles from "@/components/UploadedFiles";
 import ChatInterface from "@/components/ChatInterface";
 import DataPreview from "@/components/DataPreview";
-import { sessionService } from "@/services/sessionService";
+import { apiClient } from "@/lib/api";
 import { useApi } from "@/hooks/useApi";
 import { Upload, MessageSquare, BarChart3, FileText } from "lucide-react";
 
@@ -20,35 +20,36 @@ const Index = () => {
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
 
-  // Get current session and files
-  const { data: session, refetch: refetchSession } = useApi(() => sessionService.getCurrentSession());
+  // Get uploaded files from backend
+  const { data: files, refetch: refetchFiles, isLoading, error } = useApi(() => {
+    return apiClient.get('/api/v1/files').then(res => res.data);
+  });
 
-  // Update uploaded files when session data changes
+  // Update uploaded files when data changes
   useEffect(() => {
-    if (session?.files) {
-      const files: UploadedFile[] = session.files.map(file => ({
-        id: file.fileId,
+    if (files && Array.isArray(files)) {
+      const mappedFiles: UploadedFile[] = files.map(file => ({
+        id: file.id,
         name: file.filename,
         size: file.size,
-        uploadedAt: file.uploadedAt
+        uploadedAt: file.upload_date
       }));
-      setUploadedFiles(files);
+      setUploadedFiles(mappedFiles);
       
       // Auto-switch to chat tab if files are uploaded
-      if (files.length > 0 && activeTab === "upload") {
+      if (mappedFiles.length > 0 && activeTab === "upload") {
         setActiveTab("chat");
       }
       
       // Auto-select first file for preview
-      if (files.length > 0 && !selectedFileId) {
-        setSelectedFileId(files[0].id);
+      if (mappedFiles.length > 0 && !selectedFileId) {
+        setSelectedFileId(mappedFiles[0].id);
       }
     }
-  }, [session, activeTab, selectedFileId]);
+  }, [files, activeTab, selectedFileId]);
 
   const handleFileUpload = () => {
-    // Refresh session data after file upload
-    refetchSession();
+    refetchFiles();
   };
 
   const selectedFile = uploadedFiles.find(f => f.id === selectedFileId);
@@ -75,7 +76,7 @@ const Index = () => {
                 </TabsTrigger>
                 <TabsTrigger value="files" className="flex items-center gap-2" disabled={uploadedFiles.length === 0}>
                   <FileText className="w-4 h-4" />
-                  Files
+                  Files ({uploadedFiles.length})
                 </TabsTrigger>
               </TabsList>
             </div>
@@ -83,14 +84,24 @@ const Index = () => {
 
           {/* Upload Tab */}
           <TabsContent value="upload" className="mt-0">
-            <UploadSection />
+            <UploadSection onUploadComplete={handleFileUpload} />
           </TabsContent>
 
           {/* Chat Tab */}
           <TabsContent value="chat" className="mt-0">
-            <ChatInterface 
-              uploadedFiles={uploadedFiles.map(f => ({ id: f.id, name: f.name }))}
-            />
+            {isLoading ? (
+              <div className="max-w-4xl mx-auto p-6">
+                <Card>
+                  <CardContent className="flex flex-col items-center justify-center py-12">
+                    <div className="text-muted-foreground">Loading...</div>
+                  </CardContent>
+                </Card>
+              </div>
+            ) : (
+              <ChatInterface 
+                uploadedFiles={uploadedFiles.map(f => ({ id: f.id, name: f.name }))}
+              />
+            )}
           </TabsContent>
 
           {/* Data Preview Tab */}
