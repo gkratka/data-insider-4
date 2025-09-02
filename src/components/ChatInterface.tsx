@@ -1,113 +1,210 @@
-import { useState } from "react";
-import { Send, Mic } from "lucide-react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { Send, MessageSquare, FileText, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { toast } from "sonner";
+import { chatService } from "@/services/chatService";
+import { useApiMutation } from "@/hooks/useApi";
+import { ChatMessage } from "@/types/api";
 
-interface Message {
-  id: number;
-  sender: 'user' | 'ai';
-  content: string;
-  timestamp: string;
+interface ChatInterfaceProps {
+  uploadedFiles?: Array<{ id: string; name: string }>;
+  messages?: ChatMessage[];
+  onMessagesChange?: (messages: ChatMessage[]) => void;
 }
 
-const ChatInterface = () => {
+const ChatInterface = ({ uploadedFiles = [], messages = [], onMessagesChange }: ChatInterfaceProps) => {
   const [message, setMessage] = useState("");
-  
-  // Sample conversation as specified by the user
-  const [messages] = useState<Message[]>([
-    {
-      id: 1,
-      sender: 'user',
-      content: 'provide a summary analysis of the data',
-      timestamp: '2 min ago'
-    },
-    {
-      id: 2,
-      sender: 'ai',
-      content: 'what analysis do you need?',
-      timestamp: '2 min ago'
-    },
-    {
-      id: 3,
-      sender: 'user',
-      content: 'I need to know the sales by quarter',
-      timestamp: '1 min ago'
-    },
-    {
-      id: 4,
-      sender: 'ai',
-      content: 'here you go: Q1 = $1000, Q2 = $2000, Q3 = $3000, Q4 = $4000',
-      timestamp: '1 min ago'
-    }
-  ]);
+  const [showWelcome, setShowWelcome] = useState(false);
+  const [sessionId] = useState(() => `session-${Math.random().toString(36).substr(2, 9)}`);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const handleSend = () => {
-    if (message.trim()) {
-      // In a real app, this would add the message to the conversation
-      setMessage("");
+
+  // Send message mutation using ChatService
+  const { mutate: sendMessage, isLoading } = useApiMutation(chatService.sendMessage);
+
+  // Show welcome message when files are uploaded
+  useEffect(() => {
+    if (uploadedFiles.length > 0 && !showWelcome && messages.length === 0) {
+      setShowWelcome(true);
+      // Add welcome message as a chat message from the assistant
+      const welcomeMessage: ChatMessage = {
+        id: 'welcome-' + Date.now(),
+        role: 'assistant',
+        content: 'Welcome! You can now ask questions about your data. Try asking about patterns, statistics, or specific insights.',
+        timestamp: new Date().toISOString(),
+        sessionId
+      };
+      onMessagesChange?.([welcomeMessage]);
+    }
+  }, [uploadedFiles.length, showWelcome, sessionId, messages.length, onMessagesChange]);
+
+  // Auto-scroll to bottom when new messages arrive
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  const handleSend = async () => {
+    if (!message.trim() || isLoading) return;
+
+    const userMessage: ChatMessage = {
+      id: Date.now().toString(),
+      role: 'user',
+      content: message.trim(),
+      timestamp: new Date().toISOString(),
+      sessionId
+    };
+
+    onMessagesChange?.([...messages, userMessage]);
+    setMessage("");
+
+    try {
+      const response = await sendMessage({
+        message: userMessage.content,
+        sessionId,
+        fileIds: uploadedFiles.map(f => f.id)
+      });
+
+      const assistantMessage: ChatMessage = {
+        id: response.id,
+        role: 'assistant',
+        content: response.content,
+        timestamp: response.timestamp,
+        sessionId: response.sessionId
+      };
+
+      onMessagesChange?.([...messages, userMessage, assistantMessage]);
+    } catch (error) {
+      const errorMessage: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: 'Sorry, I encountered an error processing your request.',
+        timestamp: new Date().toISOString(),
+        sessionId
+      };
+      onMessagesChange?.([...messages, userMessage, errorMessage]);
+      toast.error('Failed to send message');
     }
   };
 
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  };
+
+  const formatTimestamp = (timestamp: string) => {
+    return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
   return (
-    <div className="bg-chat text-chat-foreground">
-      <div className="max-w-4xl mx-auto">
-        <div className="border-t border-chat-border">
-          {/* Chat Messages */}
-          <ScrollArea className="h-96 p-4">
-            <div className="space-y-4">
-              {messages.map((msg) => (
-                <div
-                  key={msg.id}
-                  className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}
-                >
-                  <Card
-                    className={`max-w-xs md:max-w-md p-3 ${
-                      msg.sender === 'user'
-                        ? 'bg-chat-user-bg text-chat-user-fg border-chat-user-bg'
-                        : 'bg-chat-ai-bg text-chat-ai-fg border-chat-border'
-                    }`}
-                  >
-                    <p className="text-sm">{msg.content}</p>
-                    <p className="text-xs opacity-70 mt-1">{msg.timestamp}</p>
-                  </Card>
-                </div>
-              ))}
-            </div>
-          </ScrollArea>
-          
-          {/* Chat Input */}
-          <div className="p-4 border-t border-chat-border">
-            <div className="flex gap-2">
-              <Input
-                value={message}
-                onChange={(e) => setMessage(e.target.value)}
-                placeholder="Ask Gemini"
-                className="flex-1 bg-chat-input-bg border-chat-border text-chat-foreground placeholder:text-chat-foreground/60"
-                onKeyPress={(e) => e.key === 'Enter' && handleSend()}
-              />
-              <Button
-                onClick={handleSend}
-                size="icon"
-                className="bg-chat-user-bg hover:bg-chat-user-bg/80 text-chat-user-fg"
-              >
-                <Send className="w-4 h-4" />
-              </Button>
-              <Button
-                size="icon"
-                variant="ghost"
-                className="text-chat-foreground hover:bg-chat-border/50"
-              >
-                <Mic className="w-4 h-4" />
-              </Button>
-            </div>
-            <p className="text-xs text-chat-foreground/60 mt-2 text-center">
-              Gemini can make mistakes, so double-check it
+    <div className="max-w-4xl mx-auto p-6">
+      {(!uploadedFiles || uploadedFiles.length === 0) ? (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-12">
+            <MessageSquare className="w-12 h-12 text-muted-foreground mb-4" />
+            <p className="text-muted-foreground text-center">
+              Chat interface will be available after uploading data
             </p>
-          </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-4">
+          {/* File Context Display */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-sm">
+                <FileText className="w-4 h-4" />
+                Context Files
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <div className="flex flex-wrap gap-2">
+                {uploadedFiles.map((file) => (
+                  <Badge key={file.id} variant="secondary">
+                    {file.name}
+                  </Badge>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Chat Messages */}
+          <Card>
+            <ScrollArea className="h-[calc(100vh-400px)] p-4">
+              {messages.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
+                  <MessageSquare className="w-8 h-8 mb-2" />
+                  <p>Start a conversation about your data...</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {messages.map((msg) => (
+                    <div
+                      key={msg.id}
+                      className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                    >
+                      <div
+                        className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
+                          msg.role === 'user'
+                            ? 'bg-primary text-primary-foreground'
+                            : 'bg-muted'
+                        }`}
+                      >
+                        <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                        <p className="text-xs opacity-70 mt-1">
+                          {formatTimestamp(msg.timestamp)}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                  {isLoading && (
+                    <div className="flex justify-start">
+                      <div className="bg-muted px-4 py-2 rounded-lg flex items-center gap-2">
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <p className="text-sm text-muted-foreground">AI is thinking...</p>
+                      </div>
+                    </div>
+                  )}
+                  <div ref={messagesEndRef} />
+                </div>
+              )}
+            </ScrollArea>
+          </Card>
+
+          {/* Message Input */}
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex gap-2">
+                <Input
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
+                  placeholder="Ask a question about your data..."
+                  onKeyPress={handleKeyPress}
+                  disabled={isLoading}
+                  className="flex-1"
+                />
+                <Button
+                  onClick={handleSend}
+                  disabled={!message.trim() || isLoading}
+                  size="icon"
+                >
+                  {isLoading ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Send className="w-4 h-4" />
+                  )}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
         </div>
-      </div>
+      )}
     </div>
   );
 };
