@@ -76,18 +76,87 @@ def extract_parameters(query: str, columns: list) -> dict:
 
 
 def simple_intent_classifier(query: str, columns: list) -> str:
-    """Enhanced intent classification with Phase 3 complex query detection"""
+    """Enhanced intent classification with Phase 3 ML-specific detection and debug logging"""
     query_lower = query.lower()
     
-    # Phase 3: Check for complex queries that need LLM code generation (first priority)
+    # Add debug logging at start of function
+    print(f"🎯 Intent Classification - Query: '{query}'")
+    
+    # Phase 3: Check for dedicated ML operations (highest priority)
+    
+    # Ridge regression detection
+    if any(word in query_lower for word in ['ridge regression', 'regularized regression', 'regularization']):
+        intent = "ml_ridge_regression"
+        print(f"🎯 Intent Classified: {intent} (Ridge regression pattern matched)")
+        return intent
+    
+    # Polynomial regression detection
+    if any(word in query_lower for word in ['polynomial regression', 'quadratic', 'cubic', 'polynomial']):
+        intent = "ml_polynomial_regression"
+        print(f"🎯 Intent Classified: {intent} (Polynomial regression pattern matched)")
+        return intent
+    
+    # Enhanced linear regression detection patterns
+    linear_regression_patterns = [
+        'linear regression', 'regression analysis', 'regression model',
+        'analyze relationship', 'relationship.*regression', 'regression.*relationship', 
+        'statistical relationship', 'linear relationship'
+    ]
+    
+    # Prediction patterns that should use MLPredictor
+    prediction_patterns = [
+        r'predict .* based on', r'forecast .* using', r'estimate .* from',
+        r'model .* relationship', r'analyze .* relationship.*regression'
+    ]
+    
+    # Check for direct pattern matches
+    if any(pattern in query_lower for pattern in linear_regression_patterns):
+        intent = "ml_linear_regression"
+        print(f"🎯 Intent Classified: {intent} (Linear regression direct pattern matched)")
+        return intent
+    
+    # Check for regex prediction patterns
+    if any(re.search(pattern, query_lower) for pattern in prediction_patterns):
+        intent = "ml_linear_regression"
+        print(f"🎯 Intent Classified: {intent} (Prediction regex pattern matched)")
+        return intent
+    
+    # Enhanced combination logic
+    if (any(word in query_lower for word in ['regression', 'linear', 'predict']) and 
+        any(word in query_lower for word in ['analysis', 'model', 'relationship', 'based on'])):
+        intent = "ml_linear_regression"
+        print(f"🎯 Intent Classified: {intent} (Enhanced combination logic matched)")
+        return intent
+    
+    # Statistical analysis detection (for ML predictor)
+    if any(combo in query_lower for combo in ['statistical analysis', 'statistical significance', 'p-value', 'confidence interval']):
+        intent = "ml_statistical_analysis"
+        print(f"🎯 Intent Classified: {intent} (Statistical analysis pattern matched)")
+        return intent
+    
+    # Phase 2/3: Check for complex queries that need LLM code generation (second priority)
     complex_keywords = [
-        'calculate', 'compute', 'analysis', 'analyze', 'compare', 'find',
+        # Existing Phase 1 keywords
+        'calculate', 'compute', 'compare', 'find',
         'percentage', 'ratio', 'total', 'sum', 'aggregate',
+        
+        # Phase 2 addition: Prediction-specific keywords (but not ML-specific)
+        # Note: 'analyze', 'relationship', 'model', 'fit' removed to prevent 
+        # conflicts with ML intent detection (should trigger ML intents, not LLM generation)
+        'predict', 'forecast', 'trend', 'future', 'estimate', 
+        'project', 'extrapolate', 'dependent', 'independent', 
+        'variable', 'slope', 'coefficient', 'r-squared', 'train',
+        
+        # Business domain keywords
         'customers', 'purchase', 'sales', 'revenue'
     ]
     
+    # Add logging for fallback to complex keywords
     if any(keyword in query_lower for keyword in complex_keywords):
-        return "llm_generate"
+        intent = "llm_generate"
+        matched_keywords = [kw for kw in complex_keywords if kw in query_lower]
+        print(f"🎯 Intent Classified: {intent} (complex keywords matched: {matched_keywords})")
+        return intent
     
     # Phase 1 operations (preserved for backward compatibility)
     if any(word in query_lower for word in ["describe", "summary", "statistics"]):
@@ -127,10 +196,62 @@ def simple_intent_classifier(query: str, columns: list) -> str:
 
 
 def execute_intent(intent: str, df: pd.DataFrame, params: Optional[Dict] = None) -> Dict[str, Any]:
-    """Execute intent with parameter support for Phase 2 operations"""
+    """Execute intent with parameter support for Phase 2 operations and Phase 3 ML operations"""
     if params is None:
         params = {}
     
+    # Phase 3: Handle dedicated ML operations
+    if intent.startswith("ml_"):
+        try:
+            from ml_predictor import MLPredictor
+            ml_predictor = MLPredictor()
+            
+            # Detect columns for regression analysis
+            numeric_cols = df.select_dtypes(include=['number']).columns.tolist()
+            
+            if len(numeric_cols) < 2:
+                return {
+                    "success": False, 
+                    "error": "Need at least 2 numeric columns for ML analysis"
+                }
+            
+            # Use first two numeric columns as default (can be enhanced with parameter extraction)
+            x_col = numeric_cols[0] if 'x_column' not in params else params['x_column']
+            y_col = numeric_cols[1] if 'y_column' not in params else params['y_column']
+            
+            # Ensure we don't use the same column for both
+            if x_col == y_col and len(numeric_cols) > 1:
+                y_col = numeric_cols[1] if x_col == numeric_cols[0] else numeric_cols[0]
+            
+            # Execute specific ML operation
+            if intent == "ml_linear_regression":
+                result = ml_predictor.linear_regression_analysis(df, x_col, y_col)
+            elif intent == "ml_polynomial_regression":
+                degree = params.get('degree', 2)
+                result = ml_predictor.polynomial_regression_analysis(df, x_col, y_col, degree)
+            elif intent == "ml_ridge_regression":
+                alpha = params.get('alpha', 1.0)
+                result = ml_predictor.ridge_regression_analysis(df, x_col, y_col, alpha)
+            elif intent == "ml_statistical_analysis":
+                # Default to linear regression for statistical analysis
+                result = ml_predictor.linear_regression_analysis(df, x_col, y_col)
+            else:
+                return {"success": False, "error": f"Unknown ML operation: {intent}"}
+            
+            if result.get('success', False):
+                # Add column information to result
+                result['columns_used'] = {'x_column': x_col, 'y_column': y_col}
+                result['intent'] = intent
+                return {"success": True, "result": result, "intent": intent, "ml_analysis": True}
+            else:
+                return {"success": False, "error": result.get('error', 'ML analysis failed')}
+                
+        except ImportError:
+            return {"success": False, "error": "ML Predictor module not available"}
+        except Exception as e:
+            return {"success": False, "error": f"ML analysis failed: {str(e)}"}
+    
+    # Phase 1/2: Handle standard operations
     if intent in ENHANCED_INTENTS:
         code = ENHANCED_INTENTS[intent]
         
@@ -165,6 +286,107 @@ def execute_intent(intent: str, df: pd.DataFrame, params: Optional[Dict] = None)
             "success": False, 
             "error": f"Unknown operation '{intent}'. Available operations: {', '.join(available_ops)}"
         }
+
+
+def analyze_prediction_context(query: str, df: pd.DataFrame) -> dict:
+    """
+    Phase 2: Comprehensive query context analysis for ML operation selection
+    
+    Features:
+    - Numeric column pairs detection for regression
+    - Time series pattern identification
+    - Categorical analysis for grouping vs continuous variables
+    - Data sufficiency checking for analysis requirements
+    """
+    query_lower = query.lower()
+    context = {'type': 'general'}
+    
+    # Column type analysis
+    numeric_cols = df.select_dtypes(include=['number']).columns.tolist()
+    categorical_cols = df.select_dtypes(include=['object', 'category']).columns.tolist()
+    datetime_cols = df.select_dtypes(include=['datetime64']).columns.tolist()
+    
+    # Check for datetime patterns in column names even if not datetime type
+    potential_date_cols = [col for col in df.columns if any(word in col.lower() 
+                          for word in ['date', 'time', 'year', 'month', 'day'])]
+    all_date_cols = list(set(datetime_cols + potential_date_cols))
+    
+    context.update({
+        'numeric_columns': numeric_cols,
+        'categorical_columns': categorical_cols,
+        'datetime_columns': all_date_cols,
+        'total_rows': len(df),
+        'sufficient_data_regression': len(df) >= 10,
+        'sufficient_data_ml': len(df) >= 30,
+        'data_quality': 'good' if df.isnull().sum().sum() / (len(df) * len(df.columns)) < 0.1 else 'poor'
+    })
+    
+    # Prediction scenario detection
+    prediction_indicators = ['predict', 'forecast', 'estimate', 'project', 'model']
+    if any(indicator in query_lower for indicator in prediction_indicators):
+        context['type'] = 'prediction'
+        
+        # Look for target variable mentions in query
+        target_column = None
+        for col in numeric_cols:
+            if col.lower() in query_lower:
+                target_column = col
+                break
+        
+        if target_column:
+            context.update({
+                'target_column': target_column,
+                'feature_columns': [c for c in numeric_cols if c != target_column],
+                'prediction_type': 'regression' if target_column in numeric_cols else 'classification'
+            })
+        
+        # Time series forecasting detection
+        if any(word in query_lower for word in ['trend', 'future', 'forecast', 'time']) and all_date_cols:
+            context.update({
+                'analysis_type': 'time_series',
+                'time_column': all_date_cols[0],
+                'suitable_for_forecasting': len(df) >= 20
+            })
+    
+    # Correlation analysis detection
+    elif 'correlation' in query_lower or 'relationship' in query_lower:
+        context['type'] = 'correlation'
+        if len(numeric_cols) >= 2:
+            context.update({
+                'analysis_type': 'correlation_matrix',
+                'suitable_pairs': [(numeric_cols[i], numeric_cols[j]) 
+                                 for i in range(len(numeric_cols)) 
+                                 for j in range(i+1, len(numeric_cols))]
+            })
+    
+    # Regression analysis detection
+    elif any(word in query_lower for word in ['regression', 'linear', 'dependent', 'independent']):
+        context['type'] = 'regression'
+        if len(numeric_cols) >= 2:
+            context.update({
+                'analysis_type': 'linear_regression',
+                'potential_target_features': numeric_cols,
+                'regression_ready': len(df) >= 10 and len(numeric_cols) >= 2
+            })
+    
+    # Grouping analysis detection
+    elif any(word in query_lower for word in ['group', 'category', 'segment']) and categorical_cols:
+        context['type'] = 'grouping'
+        context.update({
+            'analysis_type': 'grouped_analysis',
+            'grouping_columns': categorical_cols,
+            'numeric_for_grouping': numeric_cols
+        })
+    
+    # Data quality assessment
+    if context['data_quality'] == 'poor':
+        context['recommendations'] = [
+            'Consider data cleaning before analysis',
+            'Check for missing values that might affect results',
+            'Verify data types are correctly assigned'
+        ]
+    
+    return context
 
 
 def get_available_operations() -> Dict[str, str]:

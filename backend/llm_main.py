@@ -20,6 +20,11 @@ from simple_file_manager import SimpleFileManager
 from intent_classifier import simple_intent_classifier, execute_intent, get_available_operations, extract_parameters
 from code_generator import generate_pandas_code
 from safe_executor import safe_execute_code, format_execution_result
+from response_formatter import format_natural_response
+
+# Phase 4: System Reliability imports
+from data_quality_validator import validate_data_quality
+from error_recovery_enhancer import handle_analysis_error, attempt_graceful_fallback
 
 # Load environment variables
 load_dotenv()
@@ -126,16 +131,99 @@ async def chat(request: ChatRequest):
         file_data = file_manager.get_file(request.file_ids[0])
         
         if not file_data:
-            response = f"File '{request.file_ids[0]}' not found. Please upload a file first."
-        else:
+            # Auto-recovery: Try to find the most recent available file
+            available_files = file_manager.list_files()
+            if available_files:
+                # Use the most recent file (highest ID number)
+                latest_file_id = max(available_files.keys(), key=lambda x: int(x.split('_')[1]))
+                file_data = file_manager.get_file(latest_file_id)
+                print(f"🔄 Auto-recovery: Using latest file {latest_file_id} instead of invalid {request.file_ids[0]}")
+                # Continue processing with the recovered file - don't return early
+            else:
+                response = f"File '{request.file_ids[0]}' not found. Please upload a file first."
+                # Add AI response to session and return early
+                session['messages'].append({
+                    'role': 'assistant',
+                    'content': response,
+                    'timestamp': datetime.now()
+                })
+                return ChatResponse(response=response, session_id=request.session_id)
+        
+        if file_data:  # Process the file (either original or auto-recovered)
             df = file_data['df']
             
-            # Phase 2/3: Enhanced intent classification with parameter extraction
+            # Phase 4: Data Quality Validation - Pre-analysis checks
             intent = simple_intent_classifier(request.message, df.columns.tolist())
+            
+            # Add intent validation logging
+            print(f"🔍 Pipeline Routing - Intent: '{intent}' for query: '{request.message}'")
+            
+            # Validate ML intent routing
+            if intent.startswith('ml_'):
+                print(f"✅ ML Intent Detected - Routing to MLPredictor: {intent}")
+            elif intent == 'llm_generate' and any(word in request.message.lower() for word in ['regression', 'predict', 'model']):
+                print(f"⚠️ WARNING: ML-like query routed to LLM generation instead of MLPredictor")
+                print(f"   Query: '{request.message}'")
+                print(f"   Intent: '{intent}'")
+                print(f"   Consider reviewing intent classification patterns")
+            
+            # Perform data quality validation for ML and statistical operations
+            if intent.startswith('ml_') or intent in ['regression', 'correlation']:
+                try:
+                    quality_result = validate_data_quality(df, intent)
+                    
+                    # Check for critical data quality issues
+                    if not quality_result['is_valid']:
+                        # Critical issues found - provide quality report instead of analysis
+                        quality_message = f"🔍 **Data Quality Assessment**\n\n"
+                        quality_message += f"❌ **Issues Found**:\n"
+                        for issue in quality_result['issues']:
+                            quality_message += f"• {issue}\n"
+                        
+                        if quality_result['warnings']:
+                            quality_message += f"\n⚠️ **Warnings**:\n"
+                            for warning in quality_result['warnings']:
+                                quality_message += f"• {warning}\n"
+                        
+                        if quality_result['recommendations']:
+                            quality_message += f"\n💡 **Recommendations**:\n"
+                            for rec in quality_result['recommendations']:
+                                quality_message += f"• {rec}\n"
+                        
+                        # Add quality score
+                        quality_message += f"\n📊 **Data Quality Score**: {quality_result['quality_score']:.1f}/100"
+                        
+                        response = quality_message
+                        
+                        # Add AI response to session and return early
+                        session['messages'].append({
+                            'role': 'assistant',
+                            'content': response,
+                            'timestamp': datetime.now()
+                        })
+                        return ChatResponse(response=response, session_id=request.session_id)
+                    
+                    # Quality warnings - include in analysis but warn user
+                    elif quality_result['warnings']:
+                        print(f"⚠️ Data quality warnings for {intent}: {len(quality_result['warnings'])} warnings")
+                        
+                except Exception as quality_error:
+                    print(f"⚠️ Data quality validation failed: {str(quality_error)}")
+                    # Continue with analysis despite validation failure
+            
+            # Phase 2/3: Enhanced intent classification with parameter extraction (continued)
             
             if intent == "llm_generate":
                 # Phase 3: LLM code generation for complex queries
-                sample_data = df.head(3).to_dict()
+                # Enhanced sample data context - Phase 1 Priority 3
+                sample_data = {
+                    'row_count': len(df),
+                    'columns': df.columns.tolist(),
+                    'dtypes': df.dtypes.to_dict(),
+                    'sample_rows': df.head(3).to_dict('records'),
+                    'null_counts': df.isnull().sum().to_dict(),
+                    'numeric_columns': df.select_dtypes(include=['number']).columns.tolist()
+                }
                 generated_code = generate_pandas_code(
                     request.message, 
                     df.columns.tolist(), 
@@ -150,26 +238,140 @@ async def chat(request: ChatRequest):
                 execution_result = safe_execute_code(generated_code, df)
                 
                 if execution_result["success"]:
-                    formatted_result = format_execution_result(execution_result["result"])
-                    response = f"Generated Code:\n{generated_code}\n\nResult:\n{formatted_result}"
+                    # Format as natural language response - hide technical details
+                    response = format_natural_response(request.message, execution_result["result"])
                 else:
                     print(f"❌ Execution error: {execution_result['error']}")
-                    response = f"Code Generation Error: {execution_result['error']}"
+                    
+                    # Phase 4: Enhanced error recovery for LLM-generated code
+                    try:
+                        error_context = Exception(execution_result['error'])
+                        recovery_result = handle_analysis_error(error_context, request.message, 'llm_generate', df)
+                        
+                        # Create enhanced error response
+                        error_response = f"🔧 **Analysis Issue Detected**\n\n"
+                        error_response += f"{recovery_result['user_friendly_message']}\n\n"
+                        
+                        if recovery_result['fallback_suggestions']:
+                            error_response += f"💡 **Try These Instead**:\n"
+                            for suggestion in recovery_result['fallback_suggestions'][:3]:
+                                error_response += f"• {suggestion}\n"
+                        
+                        if recovery_result['query_reformulations']:
+                            error_response += f"\n🔄 **Alternative Queries**:\n"
+                            for reform in recovery_result['query_reformulations'][:2]:
+                                error_response += f"• \"{reform}\"\n"
+                        
+                        response = error_response
+                        
+                        # Attempt graceful fallback if possible
+                        if recovery_result.get('can_retry_with_fallback', False):
+                            try:
+                                fallback_result = attempt_graceful_fallback('llm_generate', df, request.message)
+                                if fallback_result.get('fallback_successful', False):
+                                    response += f"\n\n📊 **Here's a simpler analysis instead**:\n"
+                                    response += f"{fallback_result['fallback_message']}\n\n"
+                                    response += format_natural_response(request.message, fallback_result['result'])
+                            except Exception as fallback_error:
+                                print(f"⚠️ Fallback also failed: {str(fallback_error)}")
+                    
+                    except Exception as recovery_error:
+                        print(f"⚠️ Error recovery failed: {str(recovery_error)}")
+                        response = "I encountered an issue processing your request. Could you try rephrasing your question or check if the column names are correct?"
             else:
-                # Phase 1/2: Standard intent operations
+                # Phase 1/2/3: Standard and ML intent operations
                 params = extract_parameters(request.message, df.columns.tolist())
-                result = execute_intent(intent, df, params)
+                
+                # Enhanced error context for ML operations
+                if intent.startswith('ml_'):
+                    try:
+                        result = execute_intent(intent, df, params)
+                        
+                        if not result["success"]:
+                            print(f"❌ ML Operation Failed:")
+                            print(f"   Intent: {intent}")
+                            print(f"   Query: {request.message}")
+                            print(f"   Error: {result.get('error', 'Unknown error')}")
+                            print(f"   Parameters: {params}")
+                            
+                    except Exception as e:
+                        print(f"❌ ML Pipeline Exception:")
+                        print(f"   Intent: {intent}")
+                        print(f"   Query: {request.message}")
+                        print(f"   Exception: {str(e)}")
+                        result = {"success": False, "error": f"ML pipeline error: {str(e)}"}
+                else:
+                    # Standard operations
+                    result = execute_intent(intent, df, params)
                 
                 if result["success"]:
-                    # Format result for user
-                    if isinstance(result["result"], pd.DataFrame):
-                        response = f"Result ({intent}):\n{result['result'].to_string()}"
-                    elif isinstance(result["result"], pd.Series):
-                        response = f"Result ({intent}):\n{result['result'].to_string()}"
+                    # Phase 3: Check if this is an ML analysis result
+                    if result.get("ml_analysis", False):
+                        # Import ML-specific response formatting functions
+                        from response_formatter import (
+                            format_regression_response, 
+                            format_correlation_response,
+                            format_prediction_response
+                        )
+                        
+                        ml_result = result["result"]
+                        model_type = ml_result.get("model_type", "")
+                        
+                        # Use specialized ML formatting based on model type
+                        if "regression" in model_type:
+                            response = format_regression_response(request.message, ml_result)
+                        elif "correlation" in model_type:
+                            response = format_correlation_response(request.message, ml_result)
+                        elif "prediction" in model_type:
+                            response = format_prediction_response(request.message, ml_result)
+                        else:
+                            # Fallback to regression formatting for statistical analysis
+                            response = format_regression_response(request.message, ml_result)
+                        
+                        # Add recommendations if available
+                        if hasattr(ml_result, 'get') and 'recommendations' in ml_result:
+                            response += f"\n\n💡 **Recommendations**:\n"
+                            for rec in ml_result['recommendations']:
+                                response += f"• {rec}\n"
                     else:
-                        response = f"Result ({intent}): {result['result']}"
+                        # Phase 1/2: Standard response formatting
+                        response = format_natural_response(request.message, result["result"])
                 else:
-                    response = f"Error: {result['error']}"
+                    # Phase 4: Enhanced error recovery for ML and standard operations
+                    try:
+                        error_context = Exception(result.get("error", "Unknown error occurred"))
+                        recovery_result = handle_analysis_error(error_context, request.message, intent, df)
+                        
+                        # Create enhanced error response
+                        error_response = f"🔧 **Analysis Issue Detected**\n\n"
+                        error_response += f"{recovery_result['user_friendly_message']}\n\n"
+                        
+                        if recovery_result['actionable_steps']:
+                            error_response += f"🛠️ **What You Can Do**:\n"
+                            for step in recovery_result['actionable_steps'][:4]:
+                                error_response += f"• {step}\n"
+                        
+                        if recovery_result['fallback_suggestions']:
+                            error_response += f"\n💡 **Try These Instead**:\n"
+                            for suggestion in recovery_result['fallback_suggestions'][:3]:
+                                error_response += f"• {suggestion}\n"
+                        
+                        response = error_response
+                        
+                        # Attempt graceful fallback if possible
+                        if recovery_result.get('can_retry_with_fallback', False):
+                            try:
+                                fallback_result = attempt_graceful_fallback(intent, df, request.message)
+                                if fallback_result.get('fallback_successful', False):
+                                    response += f"\n\n📊 **Here's a simpler analysis instead**:\n"
+                                    response += f"{fallback_result['fallback_message']}\n\n"
+                                    response += format_natural_response(request.message, fallback_result['result'])
+                            except Exception as fallback_error:
+                                print(f"⚠️ Fallback failed: {str(fallback_error)}")
+                        
+                    except Exception as recovery_error:
+                        print(f"⚠️ Error recovery failed: {str(recovery_error)}")
+                        response = "I encountered an issue processing your request. Could you try rephrasing your question or check if the column names are correct?"
     else:
         available_ops = ", ".join(list(get_available_operations().keys())[:10]) + "..."
         response = f"Please upload a file first. I can help with: {available_ops}"
