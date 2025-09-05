@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from typing import Dict, List, Optional, Any
+from sqlalchemy.orm import Session
 from app.services.advanced_query_processor import (
     AdvancedQueryProcessor, JoinType, TimeSeriesOperation
 )
@@ -12,6 +13,7 @@ from app.schemas.advanced_query import (
     TimeSeriesAnalysisRequest,
     QueryOptimizationRequest
 )
+from app.database import get_db
 
 router = APIRouter(prefix="/advanced-query", tags=["advanced-query"])
 
@@ -19,6 +21,7 @@ router = APIRouter(prefix="/advanced-query", tags=["advanced-query"])
 @router.post("/multi-table-join")
 async def multi_table_join(
     request: MultiTableJoinRequest,
+    db: Session = Depends(get_db),
     advanced_processor: AdvancedQueryProcessor = Depends(AdvancedQueryProcessor),
     session_service: SessionService = Depends(SessionService),
     file_service: FileService = Depends(FileService)
@@ -30,10 +33,10 @@ async def multi_table_join(
         if not session:
             raise HTTPException(status_code=404, detail="Session not found")
         
-        # Get file records
+        # Get file records with proper DB session
         file_records = []
         for file_id in request.file_ids:
-            file_record = file_service.get_file_by_id(None, file_id)  # TODO: Add proper DB session
+            file_record = file_service.get_file_by_id(db, file_id)
             if not file_record:
                 raise HTTPException(status_code=404, detail=f"File {file_id} not found")
             file_records.append(file_record)

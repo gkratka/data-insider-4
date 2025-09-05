@@ -224,8 +224,18 @@ def run_advanced_query(self, query: str, query_type: str, session_id: str, **kwa
             join_keys = kwargs.get("join_keys")
             join_type = kwargs.get("join_type", "inner")
             
-            # Get file records (simplified - in real implementation would use proper DB session)
-            file_records = []  # TODO: Implement proper file record retrieval
+            # Get file records using session service with proper DB session
+            from app.services.file_service import FileService
+            from app.database import SessionLocal
+            
+            file_service = FileService()
+            file_records = []
+            
+            with SessionLocal() as db:
+                for file_id in file_ids:
+                    file_record = file_service.get_file_by_id(db, file_id)
+                    if file_record:
+                        file_records.append(file_record)
             
             result = await advanced_processor.process_multi_table_join(
                 query, file_records, session_id, join_keys, join_type
